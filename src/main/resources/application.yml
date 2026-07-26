@@ -1,0 +1,71 @@
+server:
+  port: 18080
+
+spring:
+  application:
+    name: argus
+  ai:
+    openai:
+      # 仅为满足 Spring AI 自动装配的占位值; 实际 LLM 连接参数在下方 argus.llm(运行期可被配置页覆盖)
+      api-key: placeholder-managed-by-argus-runtime-config
+    mcp:
+      server:
+        name: argus-review
+        version: 0.6.0
+  datasource:
+    # H2 文件模式: 数据落在 data/argus.mv.db(已 gitignore), 零安装; 换 MySQL 只改这里
+    url: jdbc:h2:file:./data/argus
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  h2:
+    console:
+      # 数据库控制台默认关闭(安全); 调试时临时改 true, URL /h2-console (JDBC URL 同上, sa/空)
+      enabled: false
+      path: /h2-console
+
+argus:
+  llm:
+    # 以下为"种子"配置: 首次启动生效; 配置页修改后以 data/argus-config.json 持久化值为准
+    # OpenAI 兼容接口, Spring AI 会在 base-url 后拼接 /v1/chat/completions
+    base-url: ${ARGUS_LLM_BASE_URL:https://api.deepseek.com}
+    api-key: ${ARGUS_LLM_API_KEY:}
+    model: ${ARGUS_LLM_MODEL:deepseek-chat}
+    # Verifier 复核模型(级联), 空=与主模型相同
+    verifier-model: ${ARGUS_LLM_VERIFIER_MODEL:}
+    temperature: 0.2
+    # true 时不调用真实 LLM, 返回示例结果, 用于无 API Key 时跑通链路
+    mock: false
+  review:
+    max-file-changed-lines: 800
+    max-findings-per-file: 8
+    # Finder-Verifier 两段式复核(降误报, 成本约翻倍)
+    verifier-enabled: false
+    # 每日 Token 预算, 0=不限制
+    daily-token-budget: 0
+  gitlab:
+    base-url: ${ARGUS_GITLAB_BASE_URL:}
+    token: ${ARGUS_GITLAB_TOKEN:}
+    webhook-secret: ${ARGUS_GITLAB_WEBHOOK_SECRET:}
+  github:
+    token: ${ARGUS_GITHUB_TOKEN:}
+    webhook-secret: ${ARGUS_GITHUB_WEBHOOK_SECRET:}
+  gitee:
+    token: ${ARGUS_GITEE_TOKEN:}
+    webhook-secret: ${ARGUS_GITEE_WEBHOOK_SECRET:}
+  notify:
+    # 钉钉/企微自定义机器人 webhook, 空=不通知
+    webhook-url: ${ARGUS_NOTIFY_WEBHOOK_URL:}
+  security:
+    # 访问令牌: 为空=开放模式(本机自用); 设置后 /api/** 与 /sse 需携带 X-Argus-Token 头
+    access-token: ${ARGUS_ACCESS_TOKEN:}
+  report:
+    dir: reports
+
+logging:
+  level:
+    com.argus: INFO

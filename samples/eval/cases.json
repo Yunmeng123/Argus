@@ -1,0 +1,29 @@
+[
+  {
+    "name": "sql-injection",
+    "diffFile": "case-sql.diff",
+    "expected": [
+      { "file": "src/main/java/com/demo/dao/UserDao.java", "line": 13, "category": "SECURITY" }
+    ]
+  },
+  {
+    "name": "null-pointer",
+    "diffFile": "case-npe.diff",
+    "expected": [
+      { "file": "src/main/java/com/demo/util/StringHelper.java", "line": 6, "category": null },
+      { "file": "src/main/java/com/demo/util/StringHelper.java", "line": 10, "category": null }
+    ]
+  },
+  {
+    "name": "resource-leak",
+    "diffFile": "case-leak.diff",
+    "expected": [
+      { "file": "src/main/java/com/demo/io/FileReporter.java", "line": 9, "category": null }
+    ]
+  },
+  {
+    "name": "clean-code",
+    "diffFile": "case-clean.diff",
+    "expected": []
+  }
+]

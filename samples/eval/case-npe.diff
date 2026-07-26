@@ -1,0 +1,19 @@
+diff --git a/src/main/java/com/demo/util/StringHelper.java b/src/main/java/com/demo/util/StringHelper.java
+new file mode 100644
+index 0000000..b2c3d4e
+--- /dev/null
++++ b/src/main/java/com/demo/util/StringHelper.java
+@@ -0,0 +1,13 @@
++package com.demo.util;
++
++public class StringHelper {
++
++    public boolean isYes(String value) {
++        return value.equals("yes");
++    }
++
++    public String firstToken(String csv) {
++        String[] parts = csv.split(",");
++        return parts[0].trim();
++    }
++}

@@ -1,0 +1,19 @@
+diff --git a/src/main/java/com/demo/io/FileReporter.java b/src/main/java/com/demo/io/FileReporter.java
+new file mode 100644
+index 0000000..c3d4e5f
+--- /dev/null
++++ b/src/main/java/com/demo/io/FileReporter.java
+@@ -0,0 +1,13 @@
++package com.demo.io;
++
++import java.io.FileInputStream;
++import java.io.InputStream;
++
++public class FileReporter {
++
++    public int firstByte(String path) throws Exception {
++        InputStream in = new FileInputStream(path);
++        int value = in.read();
++        return value;
++    }
++}

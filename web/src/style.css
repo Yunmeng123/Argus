@@ -1,0 +1,129 @@
+/* Argus 全局设计系统: 主题变量 + Element Plus 视觉覆写。
+   必须在 element-plus/dist/index.css 之后引入, 否则变量覆写不生效。 */
+
+:root {
+  /* 品牌主色(靛蓝): 覆写 Element Plus 主色链, 各 light 档由主色与白色混合得出 */
+  --el-color-primary: #6366f1;
+  --el-color-primary-dark-2: #4f46e5;
+  --el-color-primary-light-3: #898bf5;
+  --el-color-primary-light-5: #b1b2f8;
+  --el-color-primary-light-7: #d0d1fb;
+  --el-color-primary-light-8: #dfe0fc;
+  --el-color-primary-light-9: #eff0fe;
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+
+  /* 中性色板 */
+  --ink-900: #0f172a;
+  --ink-700: #334155;
+  --ink-500: #64748b;
+  --ink-400: #94a3b8;
+  --line: #e8ecf4;
+  --bg: #f4f6fb;
+
+  --font-sans: 'Inter', 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  --font-mono: 'Cascadia Code', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+html {
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--ink-700);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d3d9e5;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 页面骨架: 各视图共用的标题/副标题/间距模式 */
+.page {
+  min-height: 240px;
+}
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.page-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink-900);
+  letter-spacing: -0.01em;
+}
+.page-desc {
+  margin-top: 5px;
+  font-size: 13px;
+  color: var(--ink-400);
+}
+.mb {
+  margin-bottom: 16px;
+}
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+
+/* Element Plus 组件视觉覆写 */
+.el-card {
+  --el-card-border-radius: 14px;
+  --el-card-border-color: var(--line);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.el-card__header {
+  border-bottom-color: #f1f4f9;
+  padding: 14px 20px;
+}
+.el-button {
+  font-weight: 500;
+}
+.el-button--large {
+  border-radius: 10px;
+}
+.el-alert {
+  border-radius: 10px;
+}
+.el-tabs__item {
+  font-weight: 600;
+}
+.el-table {
+  --el-table-header-bg-color: #f8fafd;
+  --el-table-header-text-color: #7d8aa0;
+  --el-table-border-color: #f0f3f8;
+  --el-table-row-hover-bg-color: #f7f9ff;
+  font-size: 13.5px;
+}
+.el-table th.el-table__cell {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+/* diff 文本域: 代码质感 */
+.mono textarea {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  background: #f8fafc;
+  border-radius: 10px;
+}

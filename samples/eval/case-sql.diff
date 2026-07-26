@@ -1,0 +1,24 @@
+diff --git a/src/main/java/com/demo/dao/UserDao.java b/src/main/java/com/demo/dao/UserDao.java
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/src/main/java/com/demo/dao/UserDao.java
+@@ -0,0 +1,18 @@
++package com.demo.dao;
++
++import java.sql.Connection;
++import java.sql.ResultSet;
++import java.sql.Statement;
++
++public class UserDao {
++
++    private Connection connection;
++
++    public int countByName(String name) throws Exception {
++        Statement stmt = connection.createStatement();
++        String sql = "SELECT COUNT(*) FROM users WHERE name = '" + name + "'";
++        ResultSet rs = stmt.executeQuery(sql);
++        rs.next();
++        return rs.getInt(1);
++    }
++}
