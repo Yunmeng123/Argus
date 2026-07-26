@@ -1,8 +1,9 @@
 # Argus — AI 代码审查 Agent
 
 基于 Spring Boot 3 + Spring AI + Vue 3 的 AI 代码审查平台。支持手动提交 diff、审查本地仓库，
-以及 **GitLab Webhook 自动触发 + MR 行级评论回写**。内建 Finder-Verifier 两段式误报治理、
-JavaParser 上下文增强、评测集质量量化、统计看板、MCP Server 与 IM 通知。
+以及 **GitLab / GitHub / Gitee Webhook 自动触发 + PR 行级评论回写**（统一 VcsProvider 适配层）。
+内建 Finder-Verifier 两段式误报治理、JavaParser 上下文增强、AI 评分总评、**开发者画像（含 AI 成长建议）**、
+评测集质量量化、统计看板、MCP Server 与 IM 通知。
 
 > Roadmap 全部落地, 单命令可运行(内嵌 H2, 无外部中间件依赖)。
 > 真实模型实测: 评测集召回率 100%, 精确率 75%(未开 Verifier 的基线)。
@@ -40,13 +41,18 @@ mvn spring-boot:run
 所有 `/api/**` 与 `/sse` 均需携带 `X-Argus-Token` 头(前端会在 401 时引导输入并记住)。
 H2 控制台默认关闭, 调试时把 `spring.h2.console.enabled` 临时改 true。
 
-### 接入 GitLab(自动审查 MR)
+### 接入代码平台(自动审查 PR/MR)
 
-1. 配置页「GitLab 集成」: 填 GitLab 地址、Access Token(需 api 权限)、自定义 Webhook Secret
-2. GitLab 项目 Settings → Webhooks: URL 填 `http://<部署机IP>:18080/api/webhook/gitlab`,
-   Secret token 填同一个值, 勾选 **Merge request events**
-3. 提交/更新 MR 即自动审查, 结果以行级评论(精确锚定到 diff 行)+总结评论回写;
-   同一 commit 幂等不重复审, 高频 push 自动合并任务只审最新
+统一入口 `http://<部署机IP>:18080/api/webhook/{platform}`, 三个平台在配置页各自填 Token + Webhook Secret:
+
+| 平台 | Webhook 设置 | 验签方式 | 回写能力 |
+|---|---|---|---|
+| GitLab | Settings → Webhooks, 勾选 Merge request events | X-Gitlab-Token 明文比对 | 行级评论(discussions position) + 总结 |
+| GitHub | Settings → Webhooks, Content type 选 json, 勾选 Pull requests | **HMAC-SHA256**(X-Hub-Signature-256) | 行级评论(line+side) + 总结 |
+| Gitee | 仓库管理 → WebHooks, 密码方式, 勾选 Pull Request | X-Gitee-Token 密码比对 | 总结评论(行级暂降级) |
+
+提交/更新 PR 即自动审查; 同一 commit 幂等不重复审, 高频 push 自动合并任务只审最新。
+新增平台只需实现 `VcsProvider` 接口(webhook 解析/取 diff/回写评论), 队列、幂等、编排全部复用。
 
 ### 接入 MCP(让 Claude Code/Cursor 调用审查)
 
@@ -60,7 +66,8 @@ MCP 客户端配置 SSE 地址 `http://localhost:18080/sse`, 即可使用工具 
 | 审查记录 | 历史列表(来源标签/问题分布/token), 点击进详情 |
 | 审查详情 | **AI 质量评分(0~100)** + AI 总评 + 问题表格(展开看说明与建议) + Verifier 过滤数 + 跳过文件 |
 | 统计看板 | 审查次数/问题总量/Token 成本/严重程度分布 + **一键运行评测集**(召回率/精确率) |
-| 系统配置 | LLM/审查参数/Verifier/GitLab/IM 通知, 全部即时生效; 机密字段只写不读 |
+| 开发者画像 | 按提交人聚合的质量档案: 平均分/分数趋势/问题分类分布/中性标签 + **AI 成长画像**(优势/问题模式/改进建议, 结果缓存) |
+| 系统配置 | LLM/审查参数/Verifier/GitLab/GitHub/Gitee/IM 通知, 全部即时生效; 机密字段只写不读 |
 
 ## API
 
@@ -70,8 +77,10 @@ MCP 客户端配置 SSE 地址 `http://localhost:18080/sse`, 即可使用工具 
 | GET | `/api/review/jobs/{id}` | 查任务进度(正在审查第几个文件)与结果 |
 | POST | `/api/review/diff` | 同步审查 unified diff(供脚本/MCP 用) |
 | POST | `/api/review/local` | 同步审查本地仓库(带 JavaParser 上下文增强) |
-| POST | `/api/webhook/gitlab` | GitLab Webhook 入口(X-Gitlab-Token 验签, 秒回 202) |
+| POST | `/api/webhook/{platform}` | gitlab/github/gitee Webhook 统一入口(各自验签, 秒回 202) |
 | GET | `/api/reviews` / `/api/reviews/{id}` | 审查记录列表/详情 |
+| GET | `/api/authors` / `/api/authors/{author}` | 开发者列表 / 完整画像 |
+| POST | `/api/authors/{author}/ai-summary` | 生成/刷新 AI 成长画像(缓存) |
 | GET | `/api/stats` | 看板聚合数据 |
 | POST | `/api/eval/run` | 运行评测集, 返回召回率/精确率 |
 | GET/PUT | `/api/config` | 运行时配置(机密字段掩码/只写) |
@@ -105,6 +114,8 @@ MCP 客户端配置 SSE 地址 `http://localhost:18080/sse`, 即可使用工具 
 | `ARGUS_LLM_BASE_URL` / `ARGUS_LLM_API_KEY` / `ARGUS_LLM_MODEL` | OpenAI 兼容 LLM(地址不带 /v1) |
 | `ARGUS_LLM_VERIFIER_MODEL` | Verifier 复核模型, 空=同主模型 |
 | `ARGUS_GITLAB_BASE_URL` / `ARGUS_GITLAB_TOKEN` / `ARGUS_GITLAB_WEBHOOK_SECRET` | GitLab 集成 |
+| `ARGUS_GITHUB_TOKEN` / `ARGUS_GITHUB_WEBHOOK_SECRET` | GitHub 集成 |
+| `ARGUS_GITEE_TOKEN` / `ARGUS_GITEE_WEBHOOK_SECRET` | Gitee 集成 |
 | `ARGUS_NOTIFY_WEBHOOK_URL` | 钉钉/企微机器人 |
 
 ## Roadmap
@@ -118,4 +129,6 @@ MCP 客户端配置 SSE 地址 `http://localhost:18080/sse`, 即可使用工具 
 - [x] **Week 5-6**: 评测集量化召回/精确率、统计看板、异步任务队列(MQ-ready 接口)
 - [x] **加分项**: MCP Server(`/sse`)、级联模型、钉钉/企微 IM 通知
 - [x] **产品化加固**: AI 评分+总评、访问令牌鉴权、手动审查异步化+实时进度、LLM 重试、每日 Token 预算
-- [ ] 后续演进: 队列平移 RabbitMQ、微服务拆分、GitHub 支持、反馈闭环(👍👎 沉淀误报库)、评测集扩充至 30+ 用例
+- [x] **多平台与画像**: VcsProvider 适配层(GitLab/GitHub/Gitee 三平台 Webhook+回写)、提交人自动采集、
+      开发者画像(趋势/分类分布/中性标签/AI 成长建议)
+- [ ] 后续演进: 队列平移 RabbitMQ、微服务拆分、反馈闭环(👍👎 沉淀误报库)、评测集扩充至 30+ 用例、Gitee 行级评论
