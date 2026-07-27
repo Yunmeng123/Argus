@@ -1,5 +1,7 @@
 # Argus — AI 代码审查 Agent
 
+<img width="1536" height="1024" alt="图片" src="https://github.com/user-attachments/assets/5bfe4c95-28ac-454d-b7ae-bce1ae1bcbec" />
+
 基于 Spring Boot 3 + Spring AI + Vue 3 的 AI 代码审查平台。支持手动提交 diff、审查本地仓库，
 以及 **GitLab / GitHub / Gitee Webhook 自动触发 + PR 行级评论回写**（统一 VcsProvider 适配层）。
 内建 Finder-Verifier 两段式误报治理、JavaParser 上下文增强、AI 评分总评、**开发者画像（含 AI 成长建议）**、
