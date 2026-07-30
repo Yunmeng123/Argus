@@ -1,0 +1,22 @@
+# Explicitly declare text and binary files to prevent AI tools and Git from reading binary files as text
+
+# Auto detect text files
+* text=auto
+
+# Binary files - preserve as-is, do not run line ending checks or text parsing
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.jar binary
+*.war binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.class binary
