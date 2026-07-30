@@ -43,6 +43,10 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
         <!-- 内嵌数据库: 文件模式持久化到 data/, 零安装; 后续换 MySQL 只改 datasource -->
         <dependency>
             <groupId>com.h2database</groupId>
