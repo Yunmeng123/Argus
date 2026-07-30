@@ -1,18 +1,22 @@
 package com.argus.vcs;
 
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.time.Duration;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
-import jakarta.annotation.PreDestroy;
+import org.springframework.amqp.AmqpException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * 进程内异步任务队列: webhook 必须秒回, 审查在后台执行。
- * 同一 PR 高频 push 时只保留最新 commit 的任务(任务合并), 过期任务直接丢弃。
- * 接口有意保持简单, 后续要平移到 RabbitMQ 时只需替换本类实现。
+ * RabbitMQ 审查任务队列: webhook 只负责可靠投递, 消费端在后台执行耗时审查。
+ * 队列持久化并配置死信队列；消费异常向外抛出，由 Spring AMQP 执行有限重试。
  */
 @Component
 public class ReviewTaskQueue {
@@ -20,33 +24,45 @@ public class ReviewTaskQueue {
     private static final Logger log = LoggerFactory.getLogger(ReviewTaskQueue.class);
 
     private final PrReviewService prReviewService;
-    private final ExecutorService worker = Executors.newFixedThreadPool(2);
-    /** key=platform:repo:pr -> 该 PR 最新待处理任务 */
-    private final ConcurrentHashMap<String, PrTask> latest = new ConcurrentHashMap<>();
+    private final RabbitTemplate rabbitTemplate;
+    private final String queueName;
+    private final Duration publisherConfirmTimeout;
 
-    public ReviewTaskQueue(PrReviewService prReviewService) {
+    public ReviewTaskQueue(PrReviewService prReviewService,
+                           RabbitTemplate rabbitTemplate,
+                           @Value("${argus.queue.name:argus.review.tasks}") String queueName,
+                           @Value("${argus.queue.publisher-confirm-timeout:5s}") Duration publisherConfirmTimeout) {
         this.prReviewService = prReviewService;
+        this.rabbitTemplate = rabbitTemplate;
+        this.queueName = queueName;
+        this.publisherConfirmTimeout = publisherConfirmTimeout;
     }
 
     public void submit(PrTask task) {
-        latest.put(task.key(), task);
-        worker.submit(() -> {
-            PrTask current = latest.get(task.key());
-            if (current == null || !current.commitSha().equals(task.commitSha())) {
-                log.info("任务已被更新的 commit 取代, 跳过: {} sha={}", task.key(), task.commitSha());
-                return;
+        CorrelationData correlation = new CorrelationData(task.key() + ":" + task.commitSha());
+        try {
+            rabbitTemplate.convertAndSend("", queueName, task, correlation);
+            CorrelationData.Confirm confirm = correlation.getFuture()
+                    .get(publisherConfirmTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            if (!confirm.isAck() || correlation.getReturned() != null) {
+                throw new ReviewQueueUnavailableException("RabbitMQ 未确认审查任务: " + confirm.getReason());
             }
-            latest.remove(task.key(), current);
-            try {
-                prReviewService.process(current);
-            } catch (Exception e) {
-                log.error("PR 审查任务失败: {} sha={}", task.key(), task.commitSha(), e);
-            }
-        });
+            log.info("PR 审查任务已确认: {} sha={}", task.key(), task.commitSha());
+        } catch (ReviewQueueUnavailableException e) {
+            throw e;
+        } catch (AmqpException e) {
+            throw new ReviewQueueUnavailableException("RabbitMQ 连接或投递失败", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ReviewQueueUnavailableException("等待 RabbitMQ 确认时被中断", e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new ReviewQueueUnavailableException("等待 RabbitMQ 确认超时或失败", e);
+        }
     }
 
-    @PreDestroy
-    public void shutdown() {
-        worker.shutdownNow();
+    @RabbitListener(queues = "${argus.queue.name:argus.review.tasks}")
+    public void consume(PrTask task) {
+        log.info("开始消费 PR 审查任务: {} sha={}", task.key(), task.commitSha());
+        prReviewService.process(task);
     }
 }

@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.eclipse.jgit.util.QuotedString;
+
 /**
  * git unified diff 解析器。
  *
@@ -17,6 +19,8 @@ public final class UnifiedDiffParser {
 
     private static final Pattern HUNK_HEADER =
             Pattern.compile("^@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@ ?(.*)$");
+    private static final Pattern GIT_HEADER_PATHS = Pattern.compile(
+            "^(\\\"(?:\\\\.|[^\\\"])*\\\"|\\S+)\\s+(\\\"(?:\\\\.|[^\\\"])*\\\"|\\S+)$");
 
     public List<FileDiff> parse(String diffText) {
         List<FileDiff> files = new ArrayList<>();
@@ -125,10 +129,10 @@ public final class UnifiedDiffParser {
     /** 从 "diff --git a/x b/x" 中提取路径, 供二进制/纯重命名等没有 ---/+++ 行的场景兜底 */
     private void parseGitHeaderPaths(FileDiff file, String line) {
         String rest = line.substring("diff --git ".length());
-        int idx = rest.lastIndexOf(" b/");
-        if (idx > 0) {
-            file.setOldPath(parsePath(rest.substring(0, idx)));
-            file.setNewPath(parsePath(rest.substring(idx + 1)));
+        Matcher paths = GIT_HEADER_PATHS.matcher(rest);
+        if (paths.matches()) {
+            file.setOldPath(parsePath(paths.group(1)));
+            file.setNewPath(parsePath(paths.group(2)));
         }
     }
 
@@ -140,11 +144,12 @@ public final class UnifiedDiffParser {
             path = path.substring(0, tab);
         }
         if (path.length() >= 2 && path.startsWith("\"") && path.endsWith("\"")) {
-            path = path.substring(1, path.length() - 1);
+            path = QuotedString.GIT_PATH.dequote(path);
         }
         if (path.startsWith("a/") || path.startsWith("b/")) {
             path = path.substring(2);
         }
         return path;
     }
+
 }

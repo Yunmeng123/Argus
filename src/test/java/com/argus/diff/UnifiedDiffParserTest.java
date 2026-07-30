@@ -90,6 +90,38 @@ class UnifiedDiffParserTest {
     }
 
     @Test
+    void parseQuotedBinaryPathFromGitHeader() {
+        String diff = String.join("\n",
+                "diff --git \"a/assets/my logo.png\" \"b/assets/my logo.png\"",
+                "Binary files \"a/assets/my logo.png\" and \"b/assets/my logo.png\" differ",
+                "");
+
+        FileDiff file = parser.parse(diff).get(0);
+        assertTrue(file.isBinary());
+        assertEquals("assets/my logo.png", file.displayPath());
+    }
+
+    @Test
+    void decodeGitOctalEscapesInQuotedPath() {
+        String diff = String.join("\n",
+                "diff --git \"a/docs/\\344\\270\\255\\346\\226\\207.txt\" \"b/docs/\\344\\270\\255\\346\\226\\207.txt\"",
+                "Binary files \"a/docs/\\344\\270\\255\\346\\226\\207.txt\" and \"b/docs/\\344\\270\\255\\346\\226\\207.txt\" differ",
+                "");
+
+        assertEquals("docs/中文.txt", parser.parse(diff).get(0).displayPath());
+    }
+
+    @Test
+    void decodeGitEscapedQuoteAndBackslashWithJGit() {
+        String diff = String.join("\n",
+                "diff --git \"a/docs/a\\\"b\\\\c.txt\" \"b/docs/a\\\"b\\\\c.txt\"",
+                "Binary files differ",
+                "");
+
+        assertEquals("docs/a\"b\\c.txt", parser.parse(diff).get(0).displayPath());
+    }
+
+    @Test
     void parseMultipleFiles() {
         String diff = String.join("\n",
                 "diff --git a/A.java b/A.java",
