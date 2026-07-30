@@ -259,19 +259,30 @@ http://localhost:18080/sse
 
 ## 测试
 
-运行后端单元测试：
+### 测试层次
+
+- **后端单元/组件测试**：`mvn test` 覆盖 diff、鉴权、运行时配置、评测计算、PR 编排与异步队列；队列测试使用可注入执行器同步推进，不依赖时间等待。
+- **Webhook 契约测试**：覆盖 GitHub HMAC、GitLab Token、Gitee 密码三种验签方式，以及错误签名、无关事件、畸形 JSON、重复和更新 commit。VCS Provider 与 LLM 均使用 Mockito 或内置 mock，本层禁止访问真实外部服务。
+- **前端测试**：`npm test` 覆盖 API 请求/错误归一化，以及关键页面的加载态、空数据与用户反馈契约；`npm run build` 验证生产打包。
+- **效果评测**：`samples/eval/` 是可选的模型质量评测集，不属于普通单元测试门槛；使用真实模型运行时可能产生费用且结果具有非确定性。
+
+本地运行与 CI 相同的检查：
 
 ```bash
 mvn test
-```
-
-构建前端：
-
-```bash
 cd web
 npm ci
+npm test
 npm run build
 ```
+
+### 最小合并门槛
+
+合并前 GitHub Actions 的 `backend` 和 `frontend` Job 必须全部通过：Java 固定为 17，Node.js 固定为 20；前端必须通过锁文件安装、测试和生产构建。新增行为必须有对应确定性测试，普通测试不得配置真实 VCS/LLM 凭据或访问公网。
+
+### 需要人工验证的外部集成
+
+发布或变更集成配置后，应在隔离的测试仓库人工验证：三平台 Webhook 投递和密钥轮换、PR/MR 行级评论坐标及权限、各厂商 OpenAI 兼容 LLM 的鉴权/限流/超时、IM Webhook 通知、MCP 客户端连接。人工场景使用专用低权限凭据，不把 Token、Webhook Secret 或真实请求载荷提交到仓库。
 
 内置评测样例位于 `samples/eval/`，启动服务后可在统计看板运行，也可调用：
 

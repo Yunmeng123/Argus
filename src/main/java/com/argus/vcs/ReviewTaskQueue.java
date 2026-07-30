@@ -3,6 +3,8 @@ package com.argus.vcs;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -20,15 +22,25 @@ public class ReviewTaskQueue {
     private static final Logger log = LoggerFactory.getLogger(ReviewTaskQueue.class);
 
     private final PrReviewService prReviewService;
-    private final ExecutorService worker = Executors.newFixedThreadPool(2);
+    private final ExecutorService worker;
+    private final AtomicBoolean closed = new AtomicBoolean();
     /** key=platform:repo:pr -> 该 PR 最新待处理任务 */
     private final ConcurrentHashMap<String, PrTask> latest = new ConcurrentHashMap<>();
 
     public ReviewTaskQueue(PrReviewService prReviewService) {
+        this(prReviewService, Executors.newFixedThreadPool(2));
+    }
+
+    /** Package-visible injection point used by deterministic queue tests. */
+    ReviewTaskQueue(PrReviewService prReviewService, ExecutorService worker) {
         this.prReviewService = prReviewService;
+        this.worker = worker;
     }
 
     public void submit(PrTask task) {
+        if (closed.get()) {
+            throw new RejectedExecutionException("review task queue is closed");
+        }
         latest.put(task.key(), task);
         worker.submit(() -> {
             PrTask current = latest.get(task.key());
@@ -47,6 +59,9 @@ public class ReviewTaskQueue {
 
     @PreDestroy
     public void shutdown() {
-        worker.shutdownNow();
+        if (closed.compareAndSet(false, true)) {
+            latest.clear();
+            worker.shutdownNow();
+        }
     }
 }
