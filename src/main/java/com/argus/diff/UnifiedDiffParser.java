@@ -151,4 +151,5 @@ public final class UnifiedDiffParser {
         }
         return path;
     }
+
 }

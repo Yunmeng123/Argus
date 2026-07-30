@@ -297,6 +297,13 @@ curl -X POST http://localhost:18080/api/eval/run
 
 若已启用访问令牌，请为 API 请求添加 `X-Argus-Token` 请求头。
 
+## 开发规范
+
+- [Argus 架构 Skill](docs/skills/argus-architecture/SKILL.md)：用于模块边界、跨包重构、持久化、消息队列和外部集成的设计审查。
+- [Argus 代码 Skill](docs/skills/argus-code/SKILL.md)：用于 Java/Vue 功能实现、缺陷修复、测试和小范围重构。
+
+两份 Skill 均要求先阅读调用链、控制改动范围并验证结果；重大架构变更应先形成方案，再开始编码。
+
 ## Roadmap
 
 详细的[产品路线图](docs/product/roadmap.md)、[可靠任务链路 PRD](docs/product/prd-reliable-review-queue.md)和[白盒/黑盒测试计划](docs/testing/reliable-review-queue-test-plan.md)随代码一同维护。
