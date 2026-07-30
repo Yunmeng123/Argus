@@ -27,8 +27,30 @@ spring:
       # 数据库控制台默认关闭(安全); 调试时临时改 true, URL /h2-console (JDBC URL 同上, sa/空)
       enabled: false
       path: /h2-console
+  rabbitmq:
+    host: ${ARGUS_RABBITMQ_HOST:localhost}
+    port: ${ARGUS_RABBITMQ_PORT:5672}
+    username: ${ARGUS_RABBITMQ_USERNAME:argus}
+    password: ${ARGUS_RABBITMQ_PASSWORD:argus}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        concurrency: 2
+        max-concurrency: 4
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          initial-interval: 2s
+          multiplier: 2
+          max-interval: 10s
+          max-attempts: 3
 
 argus:
+  queue:
+    name: ${ARGUS_QUEUE_NAME:argus.review.tasks}
+    dead-letter-name: ${ARGUS_QUEUE_DLQ_NAME:argus.review.tasks.dlq}
+    publisher-confirm-timeout: ${ARGUS_QUEUE_CONFIRM_TIMEOUT:5s}
   llm:
     # 以下为"种子"配置: 首次启动生效; 配置页修改后以 data/argus-config.json 持久化值为准
     # OpenAI 兼容接口, Spring AI 会在 base-url 后拼接 /v1/chat/completions

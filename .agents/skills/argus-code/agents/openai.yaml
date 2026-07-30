@@ -1,0 +1,4 @@
+interface:
+  display_name: "Argus Code"
+  short_description: "安全实现功能、修复缺陷、补充测试并完成小范围代码重构"
+  default_prompt: "使用 $argus-code 完成这项实现、缺陷修复、测试补充或小范围重构。"

@@ -147,32 +147,43 @@ public class RuntimeConfigService {
         try {
             RuntimeConfig stored = objectMapper.readValue(Files.readString(STORE_FILE, StandardCharsets.UTF_8),
                     RuntimeConfig.class);
-            if (!notBlank(stored.getLlm().getBaseUrl())) {
-                stored.getLlm().setBaseUrl(seed.getLlm().getBaseUrl());
-            }
-            if (!notBlank(stored.getLlm().getApiKey())) {
-                stored.getLlm().setApiKey(seed.getLlm().getApiKey());
-            }
-            if (!notBlank(stored.getLlm().getModel())) {
-                stored.getLlm().setModel(seed.getLlm().getModel());
-            }
-            if (!notBlank(stored.getGitlab().getToken())) {
-                stored.getGitlab().setToken(seed.getGitlab().getToken());
-            }
-            if (!notBlank(stored.getGitlab().getWebhookSecret())) {
-                stored.getGitlab().setWebhookSecret(seed.getGitlab().getWebhookSecret());
-            }
-            if (!notBlank(stored.getGithub().getToken())) {
-                stored.getGithub().setToken(seed.getGithub().getToken());
-            }
-            if (!notBlank(stored.getGitee().getToken())) {
-                stored.getGitee().setToken(seed.getGitee().getToken());
-            }
+            applySeedFallbacks(stored, seed);
             log.info("已加载持久化配置: {}", STORE_FILE.toAbsolutePath());
             return stored;
         } catch (IOException e) {
             log.warn("读取持久化配置失败, 使用默认配置: {}", e.getMessage());
             return seed;
+        }
+    }
+
+    /** 机密字段未在本地文件配置时，保留环境变量注入的种子值。 */
+    static void applySeedFallbacks(RuntimeConfig stored, RuntimeConfig seed) {
+        if (!notBlank(stored.getLlm().getBaseUrl())) {
+            stored.getLlm().setBaseUrl(seed.getLlm().getBaseUrl());
+        }
+        if (!notBlank(stored.getLlm().getApiKey())) {
+            stored.getLlm().setApiKey(seed.getLlm().getApiKey());
+        }
+        if (!notBlank(stored.getLlm().getModel())) {
+            stored.getLlm().setModel(seed.getLlm().getModel());
+        }
+        if (!notBlank(stored.getGitlab().getToken())) {
+            stored.getGitlab().setToken(seed.getGitlab().getToken());
+        }
+        if (!notBlank(stored.getGitlab().getWebhookSecret())) {
+            stored.getGitlab().setWebhookSecret(seed.getGitlab().getWebhookSecret());
+        }
+        if (!notBlank(stored.getGithub().getToken())) {
+            stored.getGithub().setToken(seed.getGithub().getToken());
+        }
+        if (!notBlank(stored.getGithub().getWebhookSecret())) {
+            stored.getGithub().setWebhookSecret(seed.getGithub().getWebhookSecret());
+        }
+        if (!notBlank(stored.getGitee().getToken())) {
+            stored.getGitee().setToken(seed.getGitee().getToken());
+        }
+        if (!notBlank(stored.getGitee().getWebhookSecret())) {
+            stored.getGitee().setWebhookSecret(seed.getGitee().getWebhookSecret());
         }
     }
 
@@ -187,7 +198,7 @@ public class RuntimeConfigService {
         }
     }
 
-    private boolean notBlank(String value) {
+    private static boolean notBlank(String value) {
         return value != null && !value.isBlank();
     }
 }
