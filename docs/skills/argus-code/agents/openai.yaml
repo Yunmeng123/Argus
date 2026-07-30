@@ -1,0 +1,4 @@
+interface:
+  display_name: "Argus 代码规范"
+  short_description: "以最小且经过测试的补丁修改 Argus"
+  default_prompt: "使用 $argus-code 以最小且经过测试的补丁实施这项 Argus 变更。"

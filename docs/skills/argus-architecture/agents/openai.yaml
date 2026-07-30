@@ -1,0 +1,4 @@
+interface:
+  display_name: "Argus 架构规范"
+  short_description: "安全地规划并审查 Argus 架构变更"
+  default_prompt: "使用 $argus-architecture 评估这项 Argus 架构变更，并提出最小且安全的设计。"
