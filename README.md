@@ -1,193 +1,207 @@
 # Argus — AI 代码审查 Agent
 
+Argus 是一个基于 **Spring Boot 3、Spring AI 和 Vue 3** 的自托管 AI 代码审查平台。它可以审查手动提交的 unified diff 或本地 Git 仓库，也可以通过 GitLab、GitHub、Gitee Webhook 自动审查 PR/MR，并将问题以行级评论或 Markdown 总结回写到代码托管平台。
 
-基于 Spring Boot 3 + Spring AI + Vue 3 的 AI 代码审查平台。支持手动提交 diff、审查本地仓库，
-以及 **GitLab / GitHub / Gitee Webhook 自动触发 + PR 行级评论回写**（统一 VcsProvider 适配层）。
-内建 Finder-Verifier 两段式误报治理、JavaParser 上下文增强、AI 评分总评、**开发者画像（含 AI 成长建议）**、
-评测集质量量化、统计看板、MCP Server 与 IM 通知。
-
-> Roadmap 全部落地, 单命令可运行(内嵌 H2, 无外部中间件依赖)。
-> 真实模型实测: 评测集召回率 100%, 精确率 75%(未开 Verifier 的基线)。
-
-## 系统架构
+项目内置 Finder–Verifier 两阶段误报治理、JavaParser 上下文增强、代码质量评分、开发者画像、效果评测、统计看板、MCP Server 和 IM 通知。默认使用文件模式 H2，无需额外部署数据库或消息队列。
 
 ![Argus 智能 AI 代码审查 Agent 平台架构图](docs/architecture.jpg)
 
-## 功能全景与核心架构
+## 目录
 
-### 1. 全链路工作流 (End-to-End Workflow)
+- [核心能力](#核心能力)
+- [工作流程](#工作流程)
+- [技术栈](#技术栈)
+- [快速开始](#快速开始)
+- [配置](#配置)
+- [平台集成](#平台集成)
+- [MCP 接入](#mcp-接入)
+- [页面与 API](#页面与-api)
+- [设计要点](#设计要点)
+- [测试](#测试)
+- [Roadmap](#roadmap)
+- [常见问题](#常见问题)
 
+## 核心能力
+
+| 模块 | 能力 |
+| --- | --- |
+| 多通道接入 | Web UI 粘贴 diff、本地仓库审查、GitLab/GitHub/Gitee Webhook、MCP 工具调用 |
+| 审查引擎 | unified diff 解析、文件过滤、文件级并行审查、问题分类、严重程度与置信度输出 |
+| 上下文增强 | 使用 JavaParser 提取 Java 变更行所在的完整方法，解析失败时自动降级为 diff 审查 |
+| 误报治理 | Finder 发现问题，Verifier 进行反驳式复核，最后校验问题行号是否属于真实新增行 |
+| 结果输出 | PR/MR 行级评论、Markdown 总结、Web 审查详情、钉钉/企业微信机器人通知 |
+| 质量度量 | 0～100 代码质量评分、Token 统计、召回率/精确率评测、统计看板 |
+| 开发者画像 | 按提交人聚合评分趋势、问题分类、能力标签和 AI 成长建议 |
+| 运行控制 | 运行时配置、机密字段掩码、访问令牌、每日 Token 预算、Mock 模式 |
+
+> 项目自带小型评测集。当前记录的真实模型基线为召回率 100%、精确率 75%（未启用 Verifier）；该数据仅代表仓库内样例，不等同于通用生产效果。
+
+## 工作流程
+
+```text
+手动 diff / 本地 Git 仓库 / VCS Webhook / MCP
+                         │
+                         ▼
+              UnifiedDiffParser 解析变更
+                         │
+                         ▼
+                ReviewFileFilter 过滤
+                         │
+                         ▼
+            ContextEnhancer 补充方法上下文
+                         │
+                         ▼
+              Finder 并行发现潜在问题
+                         │
+                         ▼
+             Verifier 复核并过滤误报
+                         │
+                         ▼
+            校验新增行号、汇总评分与报告
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+       Web 看板      PR/MR 评论回写     IM 通知
 ```
-┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       1. 触发层 (Triggers)                                        │
-│  ┌───────────────────────┐   ┌─────────────────────────────────────────┐   ┌──────────────────┐  │
-│  │   手动提交 diff /      │   │  GitLab / GitHub / Gitee Webhook        │   │  MCP Server      │  │
-│  │   本地 Git 仓库引用   │   │  (验签 ➔ 异步队列 ➔ 任务合并 ➔ 幂等去重)  │   │  (Claude/Cursor) │  │
-│  └───────────┬───────────┘   └────────────────────┬────────────────────┘   └────────┬─────────┘  │
-└──────────────┼────────────────────────────────────┼─────────────────────────────────┼────────────┘
-               │                                    │                                 │
-               └────────────────────────────────────┼─────────────────────────────────┘
-                                                    ▼
-┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                     2. 核心审查引擎 (Pipeline)                                    │
-│                                                                                                  │
-│  ┌────────────────────────┐    ┌────────────────────────┐    ┌────────────────────────────────┐  │
-│  │  UnifiedDiffParser     │ ➔ │  ReviewFileFilter      │ ➔ │  ContextEnhancer               │  │
-│  │  (解析 diff/行号双坐标) │    │  (大文件/类型黑白名单) │    │  (JavaParser AST完整方法提取) │  │
-│  └────────────────────────┘    └────────────────────────┘    └────────────────────────────────┘  │
-│                                                                               │                  │
-│  ┌────────────────────────┐    ┌────────────────────────┐    ┌────────────────┘                  │
-│  │  Finder (主 AI 模型)   │ ➔ │  Verifier (复核 AI)    │ ➔ │  Line Number Verifier          │  │
-│  │  (文件并行×4 提取问题) │    │  (反驳式质检/误报剔除)  │    │  (行号真实对齐校验 lineVerified)│  │
-│  └────────────────────────┘    └────────────────────────┘    └────────────────────────────────┘  │
-└───────────────────────────────────────────────────┬──────────────────────────────────────────────┘
-                                                    │
-                                                    ▼
-┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                     3. 结果输出与回写 (Outputs)                                   │
-│  ┌───────────────────────┐   ┌─────────────────────────────────────────┐   ┌──────────────────┐  │
-│  │  Web 管理看板          │   │  代码托管平台回写                        │   │  即时通讯通知    │  │
-│  │  (得分/记录/开发者画像)│   │  (MR/PR 行级评论 Inline + Markdown 总结) │   │  (钉钉/企业微信) │  │
-│  └───────────────────────┘   └─────────────────────────────────────────┘   └──────────────────┘  │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
-```
 
-### 2. 核心功能矩阵 (Capability Matrix)
+Webhook 请求会快速返回 `202 Accepted`，实际审查由进程内异步队列执行。同一 commit 会幂等去重，同一 PR/MR 的高频更新会合并，只处理最新任务。
 
-| 核心模块 | 功能特性 | 技术实现与工程设计亮点 |
-|---|---|---|
-| **多通道接入** | 平台适配与协议代理 | 支援 **Web UI 手动粘贴 Diff / 本地仓库路径**；支持 **GitLab / GitHub / Gitee** 三平台 Webhook；内置 **MCP Server (`/sse`)**，直接对接 Claude Code / Cursor。 |
-| **异步可靠性** | 高并发与风暴防护 | Webhook 接收端秒级响应 202，解耦后台任务队列；具备 **同一 Commit 幂等去重** 与 **高频 Push 自动任务合并**；内置 **每日 Token 预算闸门**。 |
-| **上下文工程** | AST 语法树增强 | 基于 **JavaParser** 提取变更行所在完整方法上下文，解决传统 Diff 片段审阅造成的“断章取义”问题；自研 **UnifiedDiffParser** 维护新旧双坐标行号。 |
-| **误报治理体系** | Finder-Verifier 双阶段机制 | **Finder (主模型)** 并行（×4）抽取潜在缺陷 ➔ **Verifier (复核模型)** 进行“反驳式”质检降误报 ➔ **LineVerified 校验** 确保行号准确精准锚定。 |
-| **评价与统计** | 质量量化与指标评估 | 基于变更行数加权算法生成 **AI 代码质量评分（0-100分）** 与 Markdown 总结；内置 **评测集 (`samples/eval/`) 跑分引擎**，自动化评估召回率 (Recall) 与精确率 (Precision)。 |
-| **开发者画像** | AI 成长助手与质量档案 | 按提交人维度聚合历史审查数据，生成**代码得分趋势、问题类型分布、中性能力标签与 AI 成长建议**（侧重指导成长，非绩效考核工具）。 |
-| **系统控制** | 运行时配置与安全 | 支持 **图形化运行时配置中心**（API Key/模型改动即时生效）；**机密字段掩码+只写不读**；支持 `ARGUS_ACCESS_TOKEN` 访问鉴权。 |
+## 技术栈
 
-## 快速开始与部署指南
+### 后端
 
-### 1. 环境依赖说明
+- Java 17
+- Spring Boot 3.5
+- Spring AI 1.0
+- Spring Web / Spring Data JPA
+- H2 文件数据库
+- JavaParser
+- Spring AI MCP Server
 
-在启动 Argus 之前，请确保您的开发运行环境满足以下要求：
+### 前端
 
-- **Java JDK**: JDK 17 或以上版本（推荐 OpenJDK 17 / Eclipse Temurin 17 / Amazon Corretto 17）。
-- **Build Tool**: Maven 3.6+。
-- **Node.js**: Node 18.x+ / 20.x+ (配套 npm 9+，仅在构建或二次开发 Vue3 前端时需要)。
-- **数据库**: **零额外安装依赖**！内置 H2 文件模式数据库（数据存储在 `./data/argus.mv.db` 中，启动时自动创建表结构）。
+- Vue 3
+- Element Plus
+- Vue Router
+- Axios
+- Vite 6
 
----
+## 快速开始
 
-### 2. 快速启动（三种体验模式）
+### 环境要求
 
-#### 模式 A：单体整合一键启动（推荐生产/日常体验）
+- JDK 17+
+- Maven 3.6+
+- Node.js 18+ 和 npm 9+（仅构建或开发前端时需要）
+- Git（审查本地仓库时需要）
 
-前端 Vue3 构建产物会直接输出至 Spring Boot 的 `static` 目录中，实现单端口（`18080`）一站式部署：
+### 方式一：前后端一体运行
 
-```powershell
-# 1. 克隆/进入项目根目录
-cd D:\Project\argus
+前端构建产物会写入 Spring Boot 的静态资源目录，应用统一监听 `18080` 端口。
 
-# 2. 编译前端静态资源（产物自动放入 src/main/resources/static/）
+```bash
+git clone <repository-url>
+cd Argus
+
 cd web
 npm install
 npm run build
 cd ..
 
-# 3. 启动后端应用
 mvn spring-boot:run
-
-# 4. 浏览器访问
-# 打开 http://localhost:18080
 ```
 
-#### 模式 B：Jar 包打包部署
+浏览器访问 <http://localhost:18080>。
 
-支持将其打包为可独立运行的平铺 Jar 包，适合服务器部署：
+### 方式二：构建并运行 Jar
 
-```powershell
-# 打包应用（跳过单元测试）
-mvn clean package -DskipTests
-
-# 启动运行 Jar
+```bash
+mvn clean package
 java -jar target/argus-0.1.0-SNAPSHOT.jar
 ```
 
-#### 模式 C：Mock 极速体验模式（免 LLM Key 快速跑通）
+### 方式三：前后端分离开发
 
-如果您暂时没有 OpenAI 兼容的 API Key，也可以直接开启 Mock 模式跑通全流程：
-1. 启动应用后打开 `http://localhost:18080` 进入 **「系统配置」** 页面。
-2. 将 **Mock 模式** 开关切换为 `启用` 并保存。
-3. 提交任何 diff 或本地仓库引用，系统将返回样例审查报告，供您快速评估交互流程。
+终端一：
 
----
+```bash
+mvn spring-boot:run
+```
 
-### 3. 前后端分离二次开发模式
+终端二：
 
-如果您需要修改前端页面或扩展 UI 功能，推荐使用 Vite 的热重载开发模式：
+```bash
+cd web
+npm install
+npm run dev
+```
 
-1. **启动后端服务**：
-   ```powershell
-   mvn spring-boot:run
-   ```
-   *后端服务监听端口：`18080`*
+访问 <http://localhost:5173>。Vite 会将 `/api` 请求代理到 `http://localhost:18080`。
 
-2. **启动前端开发服务**：
-   ```powershell
-   cd web
-   npm install
-   npm run dev
-   ```
-   *前端服务监听端口：`5173`，所有以 `/api` 开头的请求均会自动代理转发至 `http://localhost:18080`*
+### 无 API Key 体验
 
-3. **访问开发环境**：
-   打开 `http://localhost:5173`，修改 `web/src/` 代码可实现秒级 HMR 实时热更新。
+1. 启动应用并打开“系统配置”。
+2. 启用 **Mock 模式**并保存。
+3. 在“新建审查”中提交任意合法 diff 或本地仓库引用。
 
----
+Mock 模式不会调用真实 LLM，适合验证完整交互流程。
 
-### 4. 系统配置与环境变量说明
+## 配置
 
-系统启动后，配置生效有两种途径：
+配置有两种来源：
 
-#### 途径一：Web 图形化配置中心（推荐）
-访问 `http://localhost:18080` -> 左侧菜单栏 **「系统配置」**，在线修改保存后**实时生效**（持久化写入根目录 `data/argus-config.json`，无需重启服务）。
+1. **Web 配置中心**：修改后立即生效，并持久化到 `data/argus-config.json`。
+2. **环境变量**：作为首次启动的种子配置，适合 Docker、Kubernetes 和 CI/CD。
 
-#### 途径二：环境变量覆盖（适合 Docker / K8s / CI/CD 自动化）
-可在启动时传入以下环境变量覆盖默认种子配置：
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `ARGUS_LLM_BASE_URL` | `https://api.deepseek.com` | OpenAI 兼容接口地址，末尾不要添加 `/v1` |
+| `ARGUS_LLM_API_KEY` | 空 | LLM API Key |
+| `ARGUS_LLM_MODEL` | `deepseek-chat` | Finder 主模型 |
+| `ARGUS_LLM_VERIFIER_MODEL` | 空 | Verifier 模型；为空时使用主模型 |
+| `ARGUS_ACCESS_TOKEN` | 空 | 访问令牌；设置后 `/api/**` 和 `/sse` 需要 `X-Argus-Token` |
+| `ARGUS_NOTIFY_WEBHOOK_URL` | 空 | 钉钉或企业微信机器人 Webhook |
+| `ARGUS_GITLAB_BASE_URL` | 空 | GitLab 实例地址 |
+| `ARGUS_GITLAB_TOKEN` | 空 | GitLab API Token |
+| `ARGUS_GITLAB_WEBHOOK_SECRET` | 空 | GitLab Webhook Secret |
+| `ARGUS_GITHUB_TOKEN` | 空 | GitHub Token |
+| `ARGUS_GITHUB_WEBHOOK_SECRET` | 空 | GitHub Webhook Secret |
+| `ARGUS_GITEE_TOKEN` | 空 | Gitee Token |
+| `ARGUS_GITEE_WEBHOOK_SECRET` | 空 | Gitee Webhook Secret |
 
-| 环境变量 | 默认值 / 示例 | 说明 |
-|---|---|---|
-| `ARGUS_LLM_BASE_URL` | `https://api.deepseek.com` | OpenAI 兼容接口地址（**警告**：末尾请勿带 `/v1`，Spring AI 会自动拼接） |
-| `ARGUS_LLM_API_KEY` | `sk-xxxxxxxx` | LLM API 密钥（机密字段，日志全程掩码） |
-| `ARGUS_LLM_MODEL` | `deepseek-chat` | 主审查 AI 模型名称 |
-| `ARGUS_LLM_VERIFIER_MODEL` | *(空)* | 复核模型（级联反驳式剔除误报，留空表示使用主模型） |
-| `ARGUS_ACCESS_TOKEN` | *(空)* | 访问鉴权令牌（留空为开放模式；配置后接口及 `/sse` 需带 `X-Argus-Token` 头） |
-| `ARGUS_NOTIFY_WEBHOOK_URL` | *(空)* | 钉钉 / 企业微信机器人 Webhook 推送地址 |
-| `ARGUS_GITLAB_BASE_URL` | `https://gitlab.example.com` | GitLab 自建实例 Base URL |
-| `ARGUS_GITLAB_TOKEN` | `glpat-xxxxxxxx` | GitLab API Access Token (需 `api` 权限，用于回写 MR 行级评论) |
-| `ARGUS_GITLAB_WEBHOOK_SECRET`| `secret-key` | GitLab Webhook 验签 Token |
-| `ARGUS_GITHUB_TOKEN` | `ghp_xxxxxxxx` | GitHub Personal Access Token (用于 PR 回写) |
-| `ARGUS_GITHUB_WEBHOOK_SECRET`| `secret-key` | GitHub Webhook Secret (HMAC-SHA256 验签) |
+默认数据目录：
 
----
+| 内容 | 路径 |
+| --- | --- |
+| H2 数据库 | `data/argus.mv.db` |
+| 运行时配置 | `data/argus-config.json` |
+| Markdown 报告 | `reports/` |
 
-### 5. 平台集成与 MCP 扩展
+## 平台集成
 
-#### (1) 代码托管平台自动审查 (GitLab / GitHub / Gitee Webhook)
+统一 Webhook 地址：
 
-系统提供统一 Webhook 入口：`http://<部署机IP>:18080/api/webhook/{platform}`：
+```text
+http://<argus-host>:18080/api/webhook/{platform}
+```
 
-| 平台 | Webhook 配置路径 | 验签机制 | 自动回写能力 |
-|---|---|---|---|
-| **GitLab** | 仓库 -> Settings -> Webhooks (勾选 `Merge request events`) | `X-Gitlab-Token` 明文比对 | 行级评论 (Diff position 锚定) + Markdown 汇总 |
-| **GitHub** | 仓库 -> Settings -> Webhooks (Content type 选择 `json`，勾选 `Pull requests`) | **HMAC-SHA256** (`X-Hub-Signature-256`) | 行级评论 (line + side 映射) + Markdown 汇总 |
-| **Gitee** | 仓库 -> 仓库管理 -> WebHooks (选择密码方式，勾选 `Pull Request`) | `X-Gitee-Token` 密码比对 | PR 总结评论 (行级暂自动降级) |
+| 平台 | `platform` | 事件 | 验签方式 | 回写能力 |
+| --- | --- | --- | --- | --- |
+| GitLab | `gitlab` | Merge request events | `X-Gitlab-Token` | 行级评论 + Markdown 总结 |
+| GitHub | `github` | Pull requests | HMAC-SHA256 (`X-Hub-Signature-256`) | 行级评论 + Markdown 总结 |
+| Gitee | `gitee` | Pull Request | `X-Gitee-Token` | Markdown 总结，行级评论暂降级 |
 
-提交/更新 PR 即自动审查；同一 commit 具备幂等去重特性，高频 push 自动合并任务只审查最新 commit。
+接入前请在“系统配置”或环境变量中填写对应平台的 Token 和 Webhook Secret。生产环境应同时设置 `ARGUS_ACCESS_TOKEN`，并限制服务的网络访问范围。
 
-#### (2) MCP Server 接入 (让 Cursor / Claude Code 调用审查)
+## MCP 接入
 
-Argus 内置 MCP Server，暴露 SSE 端点 `http://localhost:18080/sse`。
-在你的 MCP 客户端（如 Cursor 的 `mcp.json` 或 Claude Desktop 配置文件）中添加：
+Argus 暴露 MCP SSE 端点：
+
+```text
+http://localhost:18080/sse
+```
+
+客户端配置示例：
 
 ```json
 {
@@ -198,97 +212,124 @@ Argus 内置 MCP Server，暴露 SSE 端点 `http://localhost:18080/sse`。
   }
 }
 ```
-配置完成后即可在对话中直接调用工具 `argus_review_diff`。
 
----
+连接后可调用 `argus_review_diff`，输入 Git unified diff，返回结构化审查结果。如果启用了访问令牌，MCP 请求也需要携带 `X-Argus-Token`。
 
-### 6. 常见踩坑与 FAQ
+## 页面与 API
 
-- ❓ **Q: LLM 请求返回 404，或者提示无法解析 `/v1/v1/chat/completions`？**
-  - **原因**：Spring AI 的 OpenAI 模块在 `base-url` 之后会自动拼接 `/v1/chat/completions`。
-  - **解法**：在配置页或环境变量中填写 Base URL 时，**千万不要以 `/v1` 结尾**！例如 DeepSeek 填 `https://api.deepseek.com` 即可。
-
-- ❓ **Q: PowerShell 控制台 curl/接口测试时返回的中文显示乱码？**
-  - **原因**：PowerShell 5.1 默认解码格式未强制使用 UTF-8。
-  - **解法**：可参考项目内脚本 [scripts/review-sample.ps1](file:///D:/Project/argus/scripts/review-sample.ps1) 使用 `[System.Text.Encoding]::UTF8` 转换流；或建议使用 Git Bash / Linux / Postman 进行接口调试。
-
-- ❓ **Q: 如何可视化查看内嵌 H2 数据库的数据？**
-  - **解法**：修改 `src/main/resources/application.yml` 中的 `spring.h2.console.enabled: true`，然后访问 `http://localhost:18080/h2-console`。JDBC URL 填写 `jdbc:h2:file:./data/argus`，用户名 `sa`，密码留空即可。
-
-- ❓ **Q: 如何保证部署在公网/局域网时的安全？**
-  - **解法**：在启动时配置环境变量 `ARGUS_ACCESS_TOKEN=你的自定义Token`。系统开启鉴权模式后，所有 `/api/**` 接口与 `/sse` 均需附带 `X-Argus-Token: 你的自定义Token` 请求头（前端会在返回 401 时自动弹框提示引导输入并本地记住）。
-
-## 页面
+### Web 页面
 
 | 页面 | 功能 |
-|---|---|
-| 新建审查 | 粘贴 diff / 本地仓库两个引用, 提交并跳转结果页 |
-| 审查记录 | 历史列表(来源标签/问题分布/token), 点击进详情 |
-| 审查详情 | **AI 质量评分(0~100)** + AI 总评 + 问题表格(展开看说明与建议) + Verifier 过滤数 + 跳过文件 |
-| 统计看板 | 审查次数/问题总量/Token 成本/严重程度分布 + **一键运行评测集**(召回率/精确率) |
-| 开发者画像 | 按提交人聚合的质量档案: 平均分/分数趋势/问题分类分布/中性标签 + **AI 成长画像**(优势/问题模式/改进建议, 结果缓存) |
-| 系统配置 | LLM/审查参数/Verifier/GitLab/GitHub/Gitee/IM 通知, 全部即时生效; 机密字段只写不读 |
+| --- | --- |
+| 新建审查 | 粘贴 diff 或选择本地仓库引用，异步提交并查看进度 |
+| 审查记录 | 查看来源、问题分布、评分和 Token 使用量 |
+| 审查详情 | 查看 AI 总评、问题明细、建议、跳过文件和 Verifier 过滤数 |
+| 统计看板 | 查看审查次数、问题分布、Token 成本并运行评测集 |
+| 开发者画像 | 查看个人评分趋势、问题分类、标签和 AI 成长建议 |
+| 系统配置 | 管理模型、审查策略、平台集成、通知和安全配置 |
 
-## API
+### HTTP API
 
 | 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/api/review/jobs` | **异步提交审查**(diff 或本地仓库), 秒回 jobId |
-| GET | `/api/review/jobs/{id}` | 查任务进度(正在审查第几个文件)与结果 |
-| POST | `/api/review/diff` | 同步审查 unified diff(供脚本/MCP 用) |
-| POST | `/api/review/local` | 同步审查本地仓库(带 JavaParser 上下文增强) |
-| POST | `/api/webhook/{platform}` | gitlab/github/gitee Webhook 统一入口(各自验签, 秒回 202) |
-| GET | `/api/reviews` / `/api/reviews/{id}` | 审查记录列表/详情 |
-| GET | `/api/authors` / `/api/authors/{author}` | 开发者列表 / 完整画像 |
-| POST | `/api/authors/{author}/ai-summary` | 生成/刷新 AI 成长画像(缓存) |
-| GET | `/api/stats` | 看板聚合数据 |
-| POST | `/api/eval/run` | 运行评测集, 返回召回率/精确率 |
-| GET/PUT | `/api/config` | 运行时配置(机密字段掩码/只写) |
-| GET | `/sse` | MCP Server SSE 端点 |
+| --- | --- | --- |
+| `POST` | `/api/review/jobs` | 异步提交 diff 或本地仓库审查 |
+| `GET` | `/api/review/jobs/{id}` | 查询任务进度和结果 |
+| `POST` | `/api/review/diff` | 同步审查 unified diff |
+| `POST` | `/api/review/local` | 同步审查本地仓库 |
+| `POST` | `/api/webhook/{platform}` | 接收 GitLab/GitHub/Gitee Webhook |
+| `GET` | `/api/reviews` | 查询审查记录 |
+| `GET` | `/api/reviews/{id}` | 查询审查详情 |
+| `GET` | `/api/authors` | 查询开发者列表 |
+| `GET` | `/api/authors/{author}` | 查询开发者画像 |
+| `POST` | `/api/authors/{author}/ai-summary` | 生成或刷新 AI 成长画像 |
+| `GET` | `/api/stats` | 查询看板统计数据 |
+| `POST` | `/api/eval/run` | 运行内置评测集 |
+| `GET`, `PUT` | `/api/config` | 查询或更新运行时配置 |
+| `GET` | `/sse` | MCP Server SSE 端点 |
 
 ## 设计要点
 
-- **行号双坐标追踪**: 解析 diff 时每行维护 old/new 行号, GitLab 行级评论的 position 锚定全靠它;
-  LLM 报告的行号还要经过"是否真实落在新增行"校验(lineVerified), 锚不上的降级进总结评论。
-- **误报治理**: prompt 约束(宁可漏报) + confidence 阈值 + **Finder-Verifier 两段式**——
-  复核模型对每条发现做"反驳式"质检, 站不住脚的剔除; 复核模型可配置为不同模型(级联)。
-- **上下文工程**: 本地仓库审查时用 JavaParser 提取"变更行所在完整方法"喂给模型,
-  解决"只看 diff 片段导致的断章取义"; 解析失败安静降级。
-- **异步可靠性**: webhook 秒回 202(GitLab 10s 超时会重推) → 进程内队列异步审查;
-  同 MR 高频 push 任务合并只审最新 commit; 同 commit 幂等(DB 唯一性判定)。
-  前端手动审查同样异步化(job + 轮询进度), 大 MR 不再同步等待超时。
-  队列接口有意收敛, 需要横向扩展时可平移到 RabbitMQ。
-- **成本与容错**: LLM 调用显式重试(3 次指数退避); 每日 Token 预算闸门(超预算拒绝新审查,
-  防 webhook 风暴烧钱); 访问令牌鉴权(机密字段只写不读 + h2-console 默认关闭)。
-- **效果评测**: samples/eval/ 埋点用例 + `/api/eval/run` 量化召回/精确率,
-  prompt/模型/上下文策略每次调整跑一遍防退化。实测 recall=1.0 / precision=0.75。
-- **运行时配置**: 全部配置改完即生效(客户端按版本号懒重建), 机密字段只写不读、掩码回显,
-  持久化文件 gitignore, 日志全程不落 Key。
-- **存储分层**: H2 两张表(record 冗余 JSON 列免联查 + finding 明细), 存取收敛在 ReviewStore,
-  换 MySQL 只改 datasource。
+- **双坐标行号**：diff 解析器同时维护 old/new 行号；只有真实新增行才标记为 `lineVerified`，无法锚定的问题降级到总结评论。
+- **Finder–Verifier**：主模型发现问题，复核模型尝试反驳并过滤误报；可为两个阶段配置不同模型。
+- **上下文增强**：本地 Java 仓库审查会提取变更行所在的完整方法；AST 解析失败不会中断审查。
+- **异步与幂等**：Webhook 快速响应，后台任务合并高频更新，并利用存储记录避免重复审查同一 commit。
+- **成本控制**：文件级并行度为 4，LLM 调用支持重试，并可设置每日 Token 预算。
+- **存储分层**：审查记录和问题明细写入 H2，完整 Markdown 报告写入文件系统；替换数据库时只需调整 datasource。
+- **安全默认值**：H2 Console 默认关闭，机密配置只写不读并掩码显示；公网部署时建议启用访问令牌。
 
-## 配置项(种子值, 运行期以配置页为准)
+## 测试
 
-| 环境变量 | 说明 |
-|---|---|
-| `ARGUS_LLM_BASE_URL` / `ARGUS_LLM_API_KEY` / `ARGUS_LLM_MODEL` | OpenAI 兼容 LLM(地址不带 /v1) |
-| `ARGUS_LLM_VERIFIER_MODEL` | Verifier 复核模型, 空=同主模型 |
-| `ARGUS_GITLAB_BASE_URL` / `ARGUS_GITLAB_TOKEN` / `ARGUS_GITLAB_WEBHOOK_SECRET` | GitLab 集成 |
-| `ARGUS_GITHUB_TOKEN` / `ARGUS_GITHUB_WEBHOOK_SECRET` | GitHub 集成 |
-| `ARGUS_GITEE_TOKEN` / `ARGUS_GITEE_WEBHOOK_SECRET` | Gitee 集成 |
-| `ARGUS_NOTIFY_WEBHOOK_URL` | 钉钉/企微机器人 |
+运行后端单元测试：
+
+```bash
+mvn test
+```
+
+构建前端：
+
+```bash
+cd web
+npm ci
+npm run build
+```
+
+内置评测样例位于 `samples/eval/`，启动服务后可在统计看板运行，也可调用：
+
+```bash
+curl -X POST http://localhost:18080/api/eval/run
+```
+
+若已启用访问令牌，请为 API 请求添加 `X-Argus-Token` 请求头。
 
 ## Roadmap
 
-- [x] **Week 1**: 单体 MVP——diff 解析、文件过滤、LLM 审查、行号校验、Markdown 报告
-- [x] **Week 1.5**: Vue3 前端、运行时配置中心、审查记录持久化与查询
-- [x] **Week 1.6**: 内嵌 H2 数据库(Spring Data JPA, record+finding 两张表)
-- [x] **Week 1.7**: 前端 UI 现代化(全局设计系统、靛蓝主题、自绘侧边栏、详情页统计瓷贴、严重程度药丸标签)
-- [x] **Week 2**: GitLab Webhook 自动触发 + MR 行级评论回写 + 幂等去重 + 任务合并
-- [x] **Week 3-4**: JavaParser 上下文增强、文件级并行审查、Finder-Verifier 降误报(支持级联模型)
-- [x] **Week 5-6**: 评测集量化召回/精确率、统计看板、异步任务队列(MQ-ready 接口)
-- [x] **加分项**: MCP Server(`/sse`)、级联模型、钉钉/企微 IM 通知
-- [x] **产品化加固**: AI 评分+总评、访问令牌鉴权、手动审查异步化+实时进度、LLM 重试、每日 Token 预算
-- [x] **多平台与画像**: VcsProvider 适配层(GitLab/GitHub/Gitee 三平台 Webhook+回写)、提交人自动采集、
-      开发者画像(趋势/分类分布/中性标签/AI 成长建议)
-- [ ] 后续演进: 队列平移 RabbitMQ、微服务拆分、反馈闭环(👍👎 沉淀误报库)、评测集扩充至 30+ 用例、Gitee 行级评论
+### 已完成
+
+- [x] unified diff 解析、文件过滤、LLM 审查和 Markdown 报告
+- [x] Vue 3 管理端、运行时配置、H2 持久化
+- [x] GitLab、GitHub、Gitee Webhook 与评论回写
+- [x] JavaParser 上下文增强、文件级并行和 Finder–Verifier
+- [x] 异步任务、幂等去重、任务合并和每日 Token 预算
+- [x] 评测集、统计看板、MCP Server 和 IM 通知
+- [x] AI 评分、开发者画像和 AI 成长建议
+
+### 后续计划
+
+- [ ] 将进程内队列平移到 RabbitMQ，支持横向扩展
+- [ ] 增加人工反馈闭环，沉淀误报样本
+- [ ] 扩充评测集至 30 个以上用例
+- [ ] 补充 Gitee 行级评论
+
+## 常见问题
+
+### LLM 接口返回 404 或出现 `/v1/v1/chat/completions`
+
+Spring AI 会自动拼接 `/v1/chat/completions`，因此 `ARGUS_LLM_BASE_URL` 不应以 `/v1` 结尾。例如 DeepSeek 应配置为：
+
+```text
+https://api.deepseek.com
+```
+
+### 如何查看 H2 数据库
+
+将 `src/main/resources/application.yml` 中的 `spring.h2.console.enabled` 临时改为 `true`，启动后访问 <http://localhost:18080/h2-console>：
+
+- JDBC URL：`jdbc:h2:file:./data/argus`
+- 用户名：`sa`
+- 密码：留空
+
+调试完成后应重新关闭 H2 Console。
+
+### 如何保护部署在公网或局域网中的服务
+
+设置环境变量：
+
+```bash
+export ARGUS_ACCESS_TOKEN='replace-with-a-strong-token'
+```
+
+启用后，`/api/**` 和 `/sse` 请求都需要携带：
+
+```text
+X-Argus-Token: replace-with-a-strong-token
+```
