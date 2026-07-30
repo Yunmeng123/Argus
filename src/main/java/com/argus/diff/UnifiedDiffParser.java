@@ -1,5 +1,7 @@
 package com.argus.diff;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -125,11 +127,47 @@ public final class UnifiedDiffParser {
     /** 从 "diff --git a/x b/x" 中提取路径, 供二进制/纯重命名等没有 ---/+++ 行的场景兜底 */
     private void parseGitHeaderPaths(FileDiff file, String line) {
         String rest = line.substring("diff --git ".length());
-        int idx = rest.lastIndexOf(" b/");
-        if (idx > 0) {
-            file.setOldPath(parsePath(rest.substring(0, idx)));
-            file.setNewPath(parsePath(rest.substring(idx + 1)));
+        List<String> paths = splitGitHeaderPaths(rest);
+        if (paths.size() == 2) {
+            file.setOldPath(parsePath(paths.get(0)));
+            file.setNewPath(parsePath(paths.get(1)));
         }
+    }
+
+    /** Git 会对含空格或特殊字符的路径加双引号, 不能直接按空格或 " b/" 拆分。 */
+    private List<String> splitGitHeaderPaths(String value) {
+        List<String> result = new ArrayList<>(2);
+        int index = 0;
+        while (index < value.length() && result.size() < 2) {
+            while (index < value.length() && Character.isWhitespace(value.charAt(index))) {
+                index++;
+            }
+            if (index >= value.length()) {
+                break;
+            }
+            int start = index;
+            if (value.charAt(index) == '"') {
+                index++;
+                boolean escaped = false;
+                while (index < value.length()) {
+                    char current = value.charAt(index++);
+                    if (current == '"' && !escaped) {
+                        break;
+                    }
+                    if (current == '\\' && !escaped) {
+                        escaped = true;
+                    } else {
+                        escaped = false;
+                    }
+                }
+            } else {
+                while (index < value.length() && !Character.isWhitespace(value.charAt(index))) {
+                    index++;
+                }
+            }
+            result.add(value.substring(start, index));
+        }
+        return result;
     }
 
     /** 去掉 a/、b/ 前缀与可能的引号、时间戳后缀 */
@@ -140,11 +178,47 @@ public final class UnifiedDiffParser {
             path = path.substring(0, tab);
         }
         if (path.length() >= 2 && path.startsWith("\"") && path.endsWith("\"")) {
-            path = path.substring(1, path.length() - 1);
+            path = decodeGitQuotedPath(path.substring(1, path.length() - 1));
         }
         if (path.startsWith("a/") || path.startsWith("b/")) {
             path = path.substring(2);
         }
         return path;
+    }
+
+    /** 解码 core.quotePath 使用的 C 风格转义；八进制序列表示 UTF-8 原始字节。 */
+    private String decodeGitQuotedPath(String value) {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        for (int index = 0; index < value.length();) {
+            char current = value.charAt(index++);
+            if (current != '\\' || index >= value.length()) {
+                bytes.writeBytes(String.valueOf(current).getBytes(StandardCharsets.UTF_8));
+                continue;
+            }
+            char escaped = value.charAt(index++);
+            if (escaped >= '0' && escaped <= '7') {
+                int decoded = escaped - '0';
+                int digits = 1;
+                while (digits < 3 && index < value.length()
+                        && value.charAt(index) >= '0' && value.charAt(index) <= '7') {
+                    decoded = decoded * 8 + value.charAt(index++) - '0';
+                    digits++;
+                }
+                bytes.write(decoded);
+                continue;
+            }
+            char decoded = switch (escaped) {
+                case 'a' -> '\u0007';
+                case 'b' -> '\b';
+                case 't' -> '\t';
+                case 'n' -> '\n';
+                case 'v' -> '\u000B';
+                case 'f' -> '\f';
+                case 'r' -> '\r';
+                default -> escaped;
+            };
+            bytes.writeBytes(String.valueOf(decoded).getBytes(StandardCharsets.UTF_8));
+        }
+        return bytes.toString(StandardCharsets.UTF_8);
     }
 }
