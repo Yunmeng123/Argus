@@ -112,6 +112,16 @@ class UnifiedDiffParserTest {
     }
 
     @Test
+    void decodeGitEscapedQuoteAndBackslashWithJGit() {
+        String diff = String.join("\n",
+                "diff --git \"a/docs/a\\\"b\\\\c.txt\" \"b/docs/a\\\"b\\\\c.txt\"",
+                "Binary files differ",
+                "");
+
+        assertEquals("docs/a\"b\\c.txt", parser.parse(diff).get(0).displayPath());
+    }
+
+    @Test
     void parseMultipleFiles() {
         String diff = String.join("\n",
                 "diff --git a/A.java b/A.java",
