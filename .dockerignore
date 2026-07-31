@@ -1,0 +1,11 @@
+.git
+.github
+.idea
+.vscode
+data
+reports
+target
+web/dist
+web/node_modules
+*.log
+.DS_Store
