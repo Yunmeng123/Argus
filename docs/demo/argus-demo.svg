@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Argus code review workflow demo</title>
+  <desc id="desc">An animated walkthrough from submitting a diff to viewing an AI code review finding.</desc>
+  <style>
+    .frame { opacity: 0; animation: show 12s infinite; }
+    .f1 { animation-delay: 0s; }
+    .f2 { animation-delay: 4s; }
+    .f3 { animation-delay: 8s; }
+    @keyframes show { 0%, 30% { opacity: 1 } 33%, 100% { opacity: 0 } }
+    .nav { font: 14px system-ui, sans-serif; fill: #9aa6bd; }
+    .active { fill: #fff; font-weight: 600; }
+    .heading { font: 700 25px system-ui, sans-serif; fill: #20283a; }
+    .muted { font: 13px system-ui, sans-serif; fill: #7b8498; }
+    .label { font: 13px system-ui, sans-serif; fill: #4a556b; }
+    .value { font: 700 25px system-ui, sans-serif; fill: #20283a; }
+    .mono { font: 12px ui-monospace, monospace; fill: #3f4a60; }
+  </style>
+  <rect width="960" height="540" rx="12" fill="#f5f7fb"/>
+  <rect width="180" height="540" rx="12" fill="#111a2e"/>
+  <rect x="168" width="12" height="540" fill="#111a2e"/>
+  <rect x="20" y="22" width="38" height="38" rx="12" fill="#7065ec"/>
+  <text x="39" y="47" text-anchor="middle" font-size="19">👁</text>
+  <text x="68" y="39" font-family="system-ui, sans-serif" font-size="18" font-weight="700" fill="#fff">Argus</text>
+  <text x="68" y="53" font-family="system-ui, sans-serif" font-size="8" letter-spacing="2" fill="#67738b">AI CODE REVIEW</text>
+  <g class="nav">
+    <text x="28" y="100">⌂　Project</text><text x="28" y="140">✎　New review</text>
+    <text x="28" y="180">▣　Reviews</text><text x="28" y="220">▥　Dashboard</text>
+    <text x="28" y="260">⚙　Configuration</text>
+  </g>
+  <g class="frame f1">
+    <rect x="12" y="115" width="156" height="38" rx="9" fill="#7164e8"/>
+    <text x="28" y="140" class="active" font-family="system-ui, sans-serif">✎　New review</text>
+    <text x="215" y="68" class="heading">New code review</text>
+    <text x="215" y="94" class="muted">Paste a unified diff and let Argus review every changed file.</text>
+    <rect x="215" y="122" width="710" height="330" rx="12" fill="#fff" stroke="#dfe3ec"/>
+    <text x="238" y="154" class="label">Paste Diff</text><line x1="238" y1="166" x2="902" y2="166" stroke="#e4e7ed"/>
+    <g class="mono">
+      <text x="240" y="200">diff --git a/UserDao.java b/UserDao.java</text>
+      <text x="240" y="224">--- a/UserDao.java</text><text x="240" y="248">+++ b/UserDao.java</text>
+      <text x="240" y="272">@@ -10,3 +10,4 @@</text>
+      <text x="240" y="296" fill="#1c8c55">+ String sql = &quot;SELECT * FROM users WHERE id=&quot; + userId;</text>
+    </g>
+    <rect x="790" y="392" width="112" height="38" rx="8" fill="#7065ec"/>
+    <text x="846" y="416" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#fff">Start review</text>
+  </g>
+  <g class="frame f2">
+    <rect x="12" y="115" width="156" height="38" rx="9" fill="#7164e8"/>
+    <text x="28" y="140" class="active" font-family="system-ui, sans-serif">✎　New review</text>
+    <text x="215" y="68" class="heading">Review in progress</text>
+    <text x="215" y="94" class="muted">Argus is validating changed lines and reviewing files in parallel.</text>
+    <rect x="250" y="155" width="630" height="240" rx="16" fill="#fff" stroke="#dfe3ec"/>
+    <circle cx="565" cy="235" r="46" fill="none" stroke="#e6e8fb" stroke-width="10"/>
+    <path d="M565 189 A46 46 0 0 1 605 258" fill="none" stroke="#7065ec" stroke-width="10" stroke-linecap="round"/>
+    <text x="565" y="242" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" font-weight="700" fill="#7065ec">1 / 1</text>
+    <text x="565" y="316" text-anchor="middle" class="label">Reviewing UserDao.java</text>
+    <rect x="325" y="342" width="480" height="8" rx="4" fill="#e8e9f4"/><rect x="325" y="342" width="480" height="8" rx="4" fill="#7065ec"/>
+  </g>
+  <g class="frame f3">
+    <rect x="12" y="155" width="156" height="38" rx="9" fill="#7164e8"/>
+    <text x="28" y="180" class="active" font-family="system-ui, sans-serif">▣　Reviews</text>
+    <text x="215" y="68" class="heading">Review details</text><text x="215" y="94" class="muted">rev-demo-001 · completed in mock mode</text>
+    <rect x="215" y="118" width="155" height="100" rx="12" fill="#fff" stroke="#dfe3ec"/>
+    <text x="232" y="145" class="muted">AI score</text><text x="232" y="184" class="value" fill="#1b9b5a">92</text>
+    <rect x="385" y="118" width="210" height="100" rx="12" fill="#fff" stroke="#dfe3ec"/>
+    <text x="402" y="145" class="muted">Model</text><text x="402" y="181" class="label" font-weight="700">deepseek-chat (mock)</text>
+    <rect x="610" y="118" width="145" height="100" rx="12" fill="#fff" stroke="#dfe3ec"/>
+    <text x="627" y="145" class="muted">Files</text><text x="627" y="184" class="value">1 / 1</text>
+    <rect x="770" y="118" width="155" height="100" rx="12" fill="#fff" stroke="#dfe3ec"/>
+    <text x="787" y="145" class="muted">Findings</text><text x="787" y="184" class="value" fill="#d27b14">1</text>
+    <rect x="215" y="240" width="710" height="64" rx="10" fill="#fff" stroke="#dfe3ec"/><rect x="215" y="240" width="4" height="64" rx="2" fill="#7065ec"/>
+    <text x="235" y="266" class="label" font-weight="700" fill="#7065ec">AI summary</text><text x="235" y="288" class="label">Review pipeline completed successfully in mock mode.</text>
+    <rect x="215" y="326" width="710" height="138" rx="12" fill="#fff" stroke="#dfe3ec"/>
+    <text x="235" y="355" class="label" font-weight="700">Findings (1)</text><line x1="235" y1="370" x2="905" y2="370" stroke="#e4e7ed"/>
+    <rect x="238" y="390" width="54" height="22" rx="11" fill="#eef0f4"/><text x="265" y="405" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#657089">INFO</text>
+    <text x="315" y="405" class="mono">src/main/java/UserDao.java</text><text x="580" y="405" class="label">STYLE</text><text x="680" y="405" class="label">[Mock] Example finding</text>
+    <text x="238" y="442" class="muted">Expand the finding to see details and a suggested fix.</text>
+  </g>
+</svg>

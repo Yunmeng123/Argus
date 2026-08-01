@@ -1,10 +1,33 @@
 services:
+  argus:
+    build:
+      context: .
+    image: argus:local
+    ports:
+      - "18080:18080"
+    environment:
+      ARGUS_RABBITMQ_HOST: rabbitmq
+      ARGUS_RABBITMQ_USERNAME: ${ARGUS_RABBITMQ_USERNAME:-argus}
+      ARGUS_RABBITMQ_PASSWORD: ${ARGUS_RABBITMQ_PASSWORD:-argus}
+      ARGUS_LLM_MOCK: ${ARGUS_LLM_MOCK:-true}
+      ARGUS_LLM_BASE_URL: ${ARGUS_LLM_BASE_URL:-https://api.deepseek.com}
+      ARGUS_LLM_API_KEY: ${ARGUS_LLM_API_KEY:-}
+      ARGUS_LLM_MODEL: ${ARGUS_LLM_MODEL:-deepseek-chat}
+      ARGUS_ACCESS_TOKEN: ${ARGUS_ACCESS_TOKEN:-}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - argus-data:/app/data
+      - argus-reports:/app/reports
+    restart: unless-stopped
+
   rabbitmq:
     image: rabbitmq:4-management
     hostname: argus-rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: argus
-      RABBITMQ_DEFAULT_PASS: argus
+      RABBITMQ_DEFAULT_USER: ${ARGUS_RABBITMQ_USERNAME:-argus}
+      RABBITMQ_DEFAULT_PASS: ${ARGUS_RABBITMQ_PASSWORD:-argus}
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -17,4 +40,6 @@ services:
       retries: 6
 
 volumes:
+  argus-data:
+  argus-reports:
   rabbitmq-data:

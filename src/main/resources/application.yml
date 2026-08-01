@@ -61,7 +61,7 @@ argus:
     verifier-model: ${ARGUS_LLM_VERIFIER_MODEL:}
     temperature: 0.2
     # true 时不调用真实 LLM, 返回示例结果, 用于无 API Key 时跑通链路
-    mock: false
+    mock: ${ARGUS_LLM_MOCK:false}
   review:
     max-file-changed-lines: 800
     max-findings-per-file: 8

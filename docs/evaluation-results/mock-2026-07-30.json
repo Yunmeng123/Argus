@@ -1,0 +1,65 @@
+{
+  "cases": [
+    {
+      "name": "sql-injection",
+      "expectedCount": 1,
+      "hitCount": 0,
+      "findingCount": 1,
+      "missed": [
+        "src/main/java/com/demo/dao/UserDao.java:13"
+      ],
+      "unmatchedFindings": [
+        "src/main/java/com/demo/dao/UserDao.java:1 [Mock] 示例审查结果"
+      ]
+    },
+    {
+      "name": "null-pointer",
+      "expectedCount": 2,
+      "hitCount": 0,
+      "findingCount": 1,
+      "missed": [
+        "src/main/java/com/demo/util/StringHelper.java:6",
+        "src/main/java/com/demo/util/StringHelper.java:10"
+      ],
+      "unmatchedFindings": [
+        "src/main/java/com/demo/util/StringHelper.java:1 [Mock] 示例审查结果"
+      ]
+    },
+    {
+      "name": "resource-leak",
+      "expectedCount": 1,
+      "hitCount": 0,
+      "findingCount": 1,
+      "missed": [
+        "src/main/java/com/demo/io/FileReporter.java:9"
+      ],
+      "unmatchedFindings": [
+        "src/main/java/com/demo/io/FileReporter.java:1 [Mock] 示例审查结果"
+      ]
+    },
+    {
+      "name": "clean-code",
+      "expectedCount": 0,
+      "hitCount": 0,
+      "findingCount": 1,
+      "missed": [],
+      "unmatchedFindings": [
+        "src/main/java/com/demo/service/GreetingService.java:1 [Mock] 示例审查结果"
+      ]
+    }
+  ],
+  "totalExpected": 4,
+  "totalHits": 0,
+  "totalFindings": 4,
+  "matchedFindings": 0,
+  "recall": 0.0,
+  "precision": 0.0,
+  "totalTokens": 0,
+  "metadata": {
+    "mode": "built-in-mock",
+    "verifierEnabled": false,
+    "date": "2026-07-30",
+    "dataset": "samples/eval/cases.json",
+    "note": "reviewId fields omitted because they are generated per run"
+  }
+}
